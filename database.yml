@@ -1,0 +1,11 @@
+services:
+  database:
+    build: ./database
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: [ "CMD", "healthcheck.sh", "--connect", "--innodb_initialized" ]
+      start_period: 60s
+      interval: 60s
+      timeout: 10s
+      retries: 30

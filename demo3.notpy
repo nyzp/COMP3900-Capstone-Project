@@ -1,0 +1,259 @@
+import collections
+import json
+import dataclasses
+import string
+
+import matplotlib
+import numpy
+
+# quick and dirty sql read
+with open("research-2-10-2024-ForBac.sql", 'r') as f:
+
+    # posts
+    line = f.readline()
+    while not line.startswith('INSERT'):
+        line = f.readline()
+    raw_posts = []
+    line = f.readline()
+    while line.startswith('(') or (line.strip() == "INSERT INTO `posts` (`id`, `postID`, `userID`, `username`, `site`, `subSiteOwner`, `cleanRaw`, `jsonRaw`, `raw`, `createdAt`) VALUES"):
+        if line.startswith('('):
+            raw_posts.append(line)
+        line = f.readline()
+    # print(f"{raw_posts[0]=}\n {len(raw_posts)=}")
+
+    # user links
+    while not line.startswith('INSERT'):
+        line = f.readline()
+    user_links = []
+    line = f.readline()
+    while line.startswith('(') or (line.strip() == "INSERT INTO `userlinks` (`id`, `userID`, `connectionID`, `site`, `type`, `createdAt`) VALUES"):
+        if line.startswith('('):
+            user_links.append(line)
+        line = f.readline()
+    # print(f"{user_links[0]=}\n {len(user_links)=}")
+
+    # users
+    while not line.startswith('INSERT'):
+        line = f.readline()
+    raw_users = []
+    line = f.readline()
+    while line.startswith('(') or (line.strip() == "INSERT INTO `users` (`id`, `site`, `subSite`, `username`, `userID`, `cleanRaw`, `raw`, `isExtremist`, `createdAt`, `lastChecked`, `type`) VALUES"):
+        if line.startswith('('):
+            raw_users.append(line)
+        line = f.readline()
+
+    # print(f"{users[0]=}\n {len(users)=}")
+
+# process posts
+"""
+  `id` int(11) NOT NULL,
+  `postID` varchar(250) NOT NULL,
+  `userID` varchar(250) NOT NULL,
+  `username` varchar(250) NOT NULL,
+  `site` varchar(50) NOT NULL,
+  `subSiteOwner` varchar(150) NOT NULL,
+  `cleanRaw` longtext NOT NULL,
+  `jsonRaw` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT '{}',
+  `raw` longtext NOT NULL,
+  `createdAt` timestamp NOT NULL DEFAULT current_timestamp()
+"""
+# @dataclasses.dataclass
+# class Post:
+#     id: int
+#     post_id: int
+#     user_id: int
+#     username: str
+#     site: str
+#     sub_site_owner: str
+#     clean_raw: str
+#     json_raw: str
+#     raw: str
+#     created_at: str
+
+@dataclasses.dataclass
+class Post:
+    user_id: int
+    content: list[str]
+
+posts: list = []
+users = collections.defaultdict(lambda: collections.defaultdict(lambda: 0))
+all_words = collections.defaultdict(lambda: 0)
+for raw_post in raw_posts:
+    # basic input sanitation
+    if any((
+        "import" in raw_post,
+        "def" in raw_post,
+        "return" in raw_post,
+        "lambda" in raw_post,
+        ';' in raw_post,
+    )):
+        continue
+    try:
+        raw_post = raw_post[1:-3]
+        raw_post = raw_post.split(', ', 6)
+        post_6 = raw_post[0:6]
+        # print(f"{post_6=}")
+        raw_post = raw_post[6]
+        # print(f"{raw_post=}")
+        counter = 0
+        index = 0
+        for character in raw_post:
+            if character == '{':
+                counter += 1
+            elif character == '}':
+                counter -= 1
+            if counter == 0 and index > 2:
+                break
+            index += 1
+        clean_raw = raw_post[0:index + 2]
+        # print(f"{clean_raw=}")
+        raw_post = raw_post[index+4:]
+        counter = 0
+        index = 0
+        for character in raw_post:
+            if character == '{':
+                counter += 1
+            elif character == '}':
+                counter -= 1
+            if counter == 0 and index > 2:
+                break
+            index += 1
+        json_raw = raw_post[0:index + 1]
+        # print(f"{json_raw=}")
+        raw_post = raw_post[index + 2:]
+        counter = 0
+        index = 0
+        for character in raw_post:
+            if character == '{':
+                counter += 1
+            elif character == '}':
+                counter -= 1
+            if counter == 0 and index > 2:
+                break
+            index += 1
+        raw = raw_post[0:index+2]
+        # print(f"{raw=}")
+        raw_post = raw_post[4+index:]
+        # print(f"{raw_post=}")
+        # posts.append(Post(
+        #     int(post_6[0]),
+        #     int(eval(post_6[1])),
+        #     int(eval(post_6[2])),
+        #     eval(post_6[3]),
+        #     eval(post_6[4]),
+        #     eval(post_6[5]),
+        #     clean_raw_processed,
+        #     json.loads(eval(json_raw)),
+        #     raw,  # TODO: do something with this, ignoring for now
+        #     eval(raw_post)))
+        clean_raw_processed = json.loads(eval(clean_raw))
+        if "content" in clean_raw_processed:
+            if all((
+                    clean_raw_processed["content"] != "",
+                    '>' not in clean_raw_processed["content"],
+                    '<' not in clean_raw_processed["content"],
+            )):
+                content = clean_raw_processed["content"]
+                content = content.translate(str.maketrans('', '', string.punctuation.replace('#', '')))
+                content = content.lower()
+                content = content.split()
+                user_id = int(eval(post_6[2]))
+                for word in content:
+                    users[user_id][word] += 1
+                    all_words[word] += 1
+
+
+    except Exception:
+        pass # TODO: fixme
+
+# user_names = dict()
+# for raw_user in raw_users:
+#     try:
+#         raw_user = raw_user.split(', ', 5)
+#         user_names[raw_user[3][1:-1]] = int(raw_user[4][1:-1])
+#     except ValueError:
+#         pass
+# print(user_names)
+
+# print users:
+print(f"{len(users)} users: {[*users.keys()]}")
+# print(len(user_names))
+# for userkey in users.keys():
+#     print(userkey)
+#     assert(userkey in user_names.values())
+user_keys = list(enumerate(users.keys()))
+
+# filter words
+all_words = dict(filter(lambda x: x[1] > 1, all_words.items()))
+all_words = dict(filter(lambda x: x[0].startswith('#'), all_words.items()))
+#for _ in range(30):
+#    all_words = dict(filter(lambda x: x[1] != max(all_words.values()), all_words.items()))
+# print(f"{all_words=}")
+print(f"Analysing {len(all_words)} key words")
+
+# yes i know this does twice the work
+# todo (low prio): fix this
+user_word_frequency = dict()
+for _, user_id in user_keys:
+    temp_list = []
+    for word in all_words.keys():
+        temp_list.append(users[user_id][word] / all_words[word])
+    user_word_frequency[user_id] = numpy.array(temp_list)
+# print(user_word_frequency)
+connection = numpy.zeros((len(users), len(users)))
+connection_index = numpy.zeros((len(users), len(users)))
+for i, iu in user_keys:
+    for j, ju in user_keys:
+        connection[i, j] = numpy.linalg.norm(user_word_frequency[iu] - user_word_frequency[ju])
+        connection_index[i, j] = list(user_word_frequency[iu] - user_word_frequency[ju]).index(min(user_word_frequency[iu] - user_word_frequency[ju]))
+print("Connection matrix")
+print(connection)
+
+import sklearn
+import sklearn.cluster
+import sklearn.decomposition
+X = numpy.array([*user_word_frequency.values()]).T
+# print(X.shape)
+import matplotlib.pyplot
+
+# for x in range(2, 50):
+#     clusterer = sklearn.cluster.KMeans(n_clusters=x, random_state=42)
+#     cluster_labels = clusterer.fit_predict(X)
+#     silhouette = sklearn.metrics.silhouette_score(X, cluster_labels)
+#     print(x, ',', silhouette)
+
+kmeans = sklearn.cluster.KMeans(n_clusters=31, random_state=42)
+kmeans.fit(X)
+# print(X.shape)
+labels = kmeans.labels_
+centroids = kmeans.cluster_centers_
+pca = sklearn.decomposition.PCA(n_components=2)
+pca.fit(X)
+X_transformed = pca.transform(X)
+matplotlib.pyplot.scatter(centroids[:, 0], centroids[:, 1])
+matplotlib.pyplot.scatter(X_transformed[:, 0], X_transformed[:, 1], c=labels)
+matplotlib.pyplot.show()
+
+x = int(input("Input user: ").strip())
+assert(x in users.keys())
+print("User id               Distance (lower is closer) Keyword")
+ind = numpy.argpartition(connection[[*users.keys()].index(x)], 6)[1:6]
+for i, j, k in zip(numpy.array([*users.keys()])[ind], connection[[*users.keys()].index(x)][ind], connection_index[[*users.keys()].index(x)][ind]):
+    print(f"{i:<20}, {j:<25}, {[*all_words.keys()][int(k)]}")
+
+x = connection[[*users.keys()].index(x)]
+labels = users.keys()
+import networkx
+G = networkx.DiGraph()
+for distance, node in list(zip(x, labels))[:20]:
+    G.add_edge('', node, weight=distance)
+# G = networkx.from_numpy_array(x)
+pos = networkx.fruchterman_reingold_layout(G)
+networkx.draw(G, pos, with_labels=True, )
+matplotlib.pyplot.show()
+
+
+
+
+if __name__ == "__main__":
+    pass

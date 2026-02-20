@@ -1,0 +1,22 @@
+services:
+  database:
+    extends:
+      file: docker-compose.yml
+      service: database
+  backend:
+    extends:
+      file: docker-compose.yml
+      service: backend
+  frontend:
+    extends:
+      file: docker-compose.yml
+      service: frontend
+  test:
+    build:
+      context: .
+      dockerfile: ./trump/Dockerfile
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      COMPOSE: "True"
